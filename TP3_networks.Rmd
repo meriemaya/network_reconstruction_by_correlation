@@ -1,0 +1,67 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+#Introduction
+we want to analyse genomic alterations on breast tumors the online Catalog of Somatic Mutations(COSMIC). The dataset, which contains 807 samples without predisposing BRCA1/2 gemline mutations, includes somatic mutations( form whole exome sequencing) and expression level information for 91 genes. these 91 selected genes have been selected based on earlier studies on mutation and/or expression alterations in breast cancer, Materials and Methods. Gene non-synonymous mutation status is binarized (yes/no) and gene expression status is categorized as under, normal, over-expressedd by the COSMIC database.
+```{r}
+library(miic)
+library(bnlearn)
+library(igraph)
+
+```
+
+```{r}
+
+data(cosmicCancer)
+# ?cosmicCancer
+dim(cosmicCancer)
+colnames(cosmicCancer)
+table(cosmicCancer[,'Ploidy'])
+```
+
+#Call the hill-climbing approach from the bnlearn package
+'Ploidy' variable contains information about cells, value '1' for diploid tumoral cells which are 401 ones, '2' for tertraploid tumoral cells and no ploidy mentionned for the rest (08 samples )
+in the case of noting na values in the COSMIC dataset, the samples corresponding to these values should be delete to reconstruct the genomic alterations BN 
+```{r}
+
+#NA/NaN removing samples 
+
+cosmicdata=cosmicCancer[complete.cases(cosmicCancer),]
+
+#dataframe variable to factors
+#removing variables with nlevels< 0
+
+for(col in colnames(cosmicdata)){
+  cosmicdata[, col] <- as.factor(cosmicdata[, col])
+  if(nlevels(cosmicdata[, col])<2){
+    cosmicdata[, col]<- NULL
+  }
+}
+
+# new dataframe dimensions
+dim(cosmicdata)
+
+#Network reconstruction with hill climbing approach
+res_hc=hc(cosmicdata)
+
+class(res_hc)
+```
+```{r}
+adj_matrix=amat(res_hc)
+
+net_hc=g=graph_from_adjacency_matrix(adj_matrix,mode="directed",weighted = T, diag=F)
+
+E(net_hc)$arrow.size <- .3
+plot(net_hc,
+     edge.width=abs(E(net_hc)$weight),
+     edge.color= "blue")
+legend(x=-0.8,y=-1.5,legend = "Ground Truth insurance network")
+```
+
+Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Ctrl+Alt+I*.
+
+When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Ctrl+Shift+K* to preview the HTML file).
+
+The preview shows you a rendered HTML copy of the contents of the editor. Consequently, unlike *Knit*, *Preview* does not run any R code chunks. Instead, the output of the chunk when it was last run in the editor is displayed.

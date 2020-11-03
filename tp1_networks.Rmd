@@ -1,0 +1,167 @@
+---
+title: "Network Reconstruction and Analysis "
+author:
+  - Meriem BANOUNE
+  - Hichem LARIBI
+output:
+  word_document: default
+  pdf_document: default
+  html_notebook: default
+---
+
+__Introduction__
+
+   This work goal is to reconstruct regulatory network from single cell expression data that includes 33 Transcription Factors genes (TFs) for 3,934 single cells extracted at 4 different times of the mouse embryo development (days E7.0, E7.5, E7.75 and E8.25), in a way to distinct the TFs that contributes in the determination of whether the primitive cell is taking a process to be develop as an endothelial or hematopoetic cell. 
+
+  
+```{r}
+library(miic)
+library(igraph)
+library(corrplot)
+library(Hmisc)
+library(FactoMineR)
+?hematoData
+```
+__TF Correlation network__
+
+  The hematoData dataset contains 3,934 rows representing cells described by 33 transcription factors where the intersection of a row and a transcription factor contains a binaire value if a transcription factor is activated or not for a specific cell, we can see the data structure as follows 
+
+```{r}
+data("hematoData")
+head(hematoData)
+```
+In first part we are going to visualize hemoData individuals in R2 dimension with the application of PCA on these data that allows a dimension reduction. After that we will try to see the distinctable cells types (primitive, endothelial and hematopoetic cells) by applying Kmeans on hemoData dataset.
+
+```{r}
+res_pca=PCA(hematoData, graph = F)
+plot(res_pca)
+```
+In an attempt to reconstruct the network presented in Verny et al. paper with its nodes and links, we will proceed as follow. Each node would represent a TF variable, and concerning the links between these nodes we are going to exploit the correlation matrix that contains the pairwise correlation between all variable couples.   
+
+The first step is to compute correlation matrix and visualize it as follow
+
+```{r}
+corr_mat=rcorr(as.matrix(hematoData),type = "pearson")
+corrplot(corr_mat$r, type="upper", order="hclust", tl.col="black", tl.srt=45)
+```
+
+As we saw in the correlation matrix corrplot, there are exploitable correlations between TF variables, positive correlations in some cases represented in blue, negative correlations in other cases presented in red and white ones in the case of correlation abscence.
+
+From this correlation matrix considered as the adjacency matrix of the network to contruct, we will obtain different networks due to using diffrent tresh hold applied on the adjacency matrix weights to control the edges number expressed in the network, trying to find to best network structure getting closer to the Verny et al. paper.  
+```{r}
+network_TF=g=graph_from_adjacency_matrix(corr_mat$r,mode="undirected",weighted = T, diag=F  )
+network_TF <- igraph::simplify(network_TF, remove.loops = TRUE)
+plot(network_TF,layout=layout_with_dh,
+     edge.width=abs(E(network_TF)$weight),
+     edge.color=ifelse(E(network_TF)$weight > 0, "blue","red"))
+
+```
+
+```{r}
+thresh=0.4
+res_filter_corr1=corr_mat$r
+diag(res_filter_corr1)<-0
+res_filter_corr1[abs(res_filter_corr1) <thresh] <- 0
+res_filter_corr1_reduced=res_filter_corr1[rowSums(res_filter_corr1) != 0, colSums(res_filter_corr1) != 0]
+colnames(res_filter_corr1_reduced)
+```
+
+In fixing the thresh to 0.4 a significant number of links (edges) are deleted so we decided to keep only the connected node(TFs) to make more explicit the connected TFs, the resulted network bellow shows a one related component graph, where we can note two link types positive in blue and negative in red  
+
+```{r}
+network_TF_filter1=g=graph_from_adjacency_matrix(res_filter_corr1_reduced,mode="undirected",weighted = T, diag=F  )
+plot(network_TF_filter1,layout=layout_with_gem,
+     edge.width=abs(E(network_TF)$weight),
+     edge.color=ifelse(E(network_TF)$weight > 0, "blue","red"))
+
+```
+```{r}
+thresh=0.52
+res_filter_corr2=corr_mat$r
+diag(res_filter_corr2)<-0
+res_filter_corr2[abs(res_filter_corr2) <thresh] <- 0
+res_filter_corr2_reduced=res_filter_corr2[rowSums(res_filter_corr2) != 0, colSums(res_filter_corr2) != 0]
+colnames(res_filter_corr2_reduced)
+```
+```{r}
+network_TF_filter2=g=graph_from_adjacency_matrix(res_filter_corr2_reduced,mode="undirected",weighted = T, diag=F  )
+plot(network_TF_filter2,layout=layout_with_fr,
+     edge.width=abs(E(network_TF)$weight),
+     edge.color=ifelse(E(network_TF)$weight > 0, "blue","red"))
+```
+
+```{r}
+thresh=0.7
+res_filter_corr3=corr_mat$r
+diag(res_filter_corr3)<-0
+res_filter_corr3[abs(res_filter_corr3) <thresh] <- 0
+res_filter_corr3_reduced=res_filter_corr3[rowSums(res_filter_corr3) != 0, colSums(res_filter_corr3) != 0]
+colnames(res_filter_corr3_reduced)
+```
+
+
+```{r}
+network_TF_filter3=g=graph_from_adjacency_matrix(res_filter_corr3_reduced,mode="undirected",weighted = T, diag=F  )
+plot(network_TF_filter3,layout=layout_with_fr,
+     edge.width=abs(E(network_TF)$weight),
+     edge.color=ifelse(E(network_TF)$weight > 0, "blue","red"))
+```
+  
+  The Verny and al network gave us three different groups of TFs presented as bellow; 
+"Hematopoietic":
+    This group gathers the TFs for which a function in hematopoietic differentiation is found, without finding any evidence of a role in endothelium formation in the litterature. The corresponding genes linked to hematopoietic function are: Eto2, Sfpi1/PU.1, Runx1, Nfe2, Myb, Mitf, Ikaros, Gfi1b, Gfi1, Gata1.
+
+"Endothelial": 
+    For these genes, the main function found in the litterature is in endothelial development. The corresponding genes linked to endothelial function are: Ets2, Erg, Tbx3, Tbx20, Sox7, Sox17, Notch1, HoxB4.
+
+"Common":
+    These TFs have been shown to be involved in both hematopoietic and endothelial differentiation. The corresponding genes linked to both hematopoietic and endothelial functions are: Fli1, Etv6, Etv2, Ets1, Tal1, Meis1, Mecom, Lyl1, Lmo2, Ldb1, Hhex.
+    
+  Using diffrent thresh hold to controle adjacency matrix weights gave us diffrent resulted networks, and from a biological point of view and comparing to the Verny et al network, we do note links that do exist and which are found thanks to the exploitation of the  correlation matrix.
+
+  Fixing the thresh to 0.52 we noted a two related component network, where we found separated endothelial and Hematopoietic TFs by the two resulted components, Tbx20, Sox7, Notch1 and Erg, 4 of 7 TFs that are linked to endothelial function, and to other common TFs in the first component (Ets1,Hhex and Etv2). 
+
+  In the second component we note Gata1, Nfe2, Gfi1b, Myb, Ikaros and Cbfa2t3h 6 of 10 genes that are linked to hematopoietic function 
+
+__TF Partial Correlation Network__
+
+  In the second part, instead of using correlation pairwise matrix, we will compute a partial correlation matrix to construct the TF partial correlation network basing on the formula viewed in class and presented in the statement. There is no need to add a value lambda to regularization because the covariance matrix is inversible. 
+
+```{r}
+Ident<-diag(length(colnames(hematoData)))
+corr_mat_inv <- solve(corr_mat$r, Ident)
+denominateur <- outer(diag(corr_mat_inv), diag(corr_mat_inv))
+pcorr <- -(corr_mat_inv/((denominateur)**.5))
+colnames(pcorr)=rownames(pcorr)=colnames(hematoData)
+corrplot(pcorr)
+```
+we could note from the partial correlation matrix plot, that the values are minimal, implicating minimal tresh hold variation too.
+Bellow we can see the complete network plot, before filtering its edges.
+
+```{r}
+network_TF_pcorr=g=graph_from_adjacency_matrix(pcorr,mode="undirected",weighted = T, diag=F  )
+plot(network_TF_pcorr,layout=layout_with_dh,
+     edge.width=abs(E(network_TF_pcorr)$weight),
+     edge.color=ifelse(E(network_TF_pcorr)$weight > 0, "blue","red"))
+```
+
+```{r}
+thresh=0.14
+res_filter_pcorr1=pcorr
+diag(res_filter_pcorr1)<-0
+res_filter_pcorr1[abs(res_filter_pcorr1) <thresh] <- 0
+res_filter_pcorr1_reduced=res_filter_pcorr1[rowSums(res_filter_pcorr1) != 0, colSums(res_filter_pcorr1) != 0]
+colnames(res_filter_pcorr1_reduced)
+```
+```{r}
+network_TF_pcorr1=g=graph_from_adjacency_matrix(res_filter_pcorr1_reduced,mode="undirected",weighted = T, diag=F  )
+plot(network_TF_pcorr1,layout=layout_with_dh,
+     edge.width=abs(E(network_TF_pcorr1)$weight),
+     edge.color=ifelse(E(network_TF_pcorr1)$weight > 0, "blue","red"))
+```
+
+
+  Using diffrent thresh hold to controle adjacency matrix weights gave us diffrent resulted networks, and from a biological point of view and comparing to the Verny et al network, the networks resulted from the partial correlation was more significant. we note in the network above where thresh=0.14 the explicit negative partial correlation presented in red between two related components of TFs, one representing the TFs linked to hematopoietic function previously cited in Verny et al paper and the other component linked to endothelial function.  
+
+  
+

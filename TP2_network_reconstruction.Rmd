@@ -1,0 +1,228 @@
+
+#1. Preliminaries
+## a. Install and load the following R packages:
+```{r}
+library(bnlearn)
+library(pcalg)
+library(igraph)
+library(Rgraphviz)
+
+data("insurance")
+
+#colnames(insurance)
+
+#summary(insurance)
+
+```
+
+## b.Create the insurance ground truth model from the model string
+
+```{r}
+modelstring = paste0("[Age][Mileage][SocioEcon|Age][GoodStudent|Age:SocioEcon]",
+                     "[RiskAversion|Age:SocioEcon][OtherCar|SocioEcon][VehicleYear|SocioEcon:RiskAversion]",
+                     "[MakeModel|SocioEcon:RiskAversion][SeniorTrain|Age:RiskAversion]",
+                     "[HomeBase|SocioEcon:RiskAversion][AntiTheft|SocioEcon:RiskAversion]",
+                     "[RuggedAuto|VehicleYear:MakeModel][Antilock|VehicleYear:MakeModel]",
+                     "[DrivingSkill|Age:SeniorTrain][CarValue|VehicleYear:MakeModel:Mileage]",
+                     "[Airbag|VehicleYear:MakeModel][DrivQuality|RiskAversion:DrivingSkill]",
+                     "[Theft|CarValue:HomeBase:AntiTheft][Cushioning|RuggedAuto:Airbag]",
+                     "[DrivHist|RiskAversion:DrivingSkill][Accident|DrivQuality:Mileage:Antilock]",
+                     "[ThisCarDam|RuggedAuto:Accident][OtherCarCost|RuggedAuto:Accident]",
+                     "[MedCost|Age:Accident:Cushioning][ILiCost|Accident]",
+                     "[ThisCarCost|ThisCarDam:Theft:CarValue][PropCost|ThisCarCost:OtherCarCost]")
+
+g_truth = model2network(modelstring)
+#plot(dag)
+
+```
+
+##c check ground truth class 
+```{r}
+
+class(g_truth)
+
+```
+
+## d.get adjacency matrix from
+```{r}
+adj_matrix=amat(g_truth)
+
+#adj_matrix
+```
+
+## e.Build a directed igraph network from the adjacency matrix
+```{r}
+network_insurance=g=graph_from_adjacency_matrix(adj_matrix,mode="directed",weighted = T, diag=F  )
+E(network_insurance)$arrow.size <- .4
+plot(network_insurance,layout=layout_with_dh,
+     edge.width=abs(E(network_insurance)$weight),
+     edge.color= "blue")
+legend(x=-0.8,y=-1.5,legend = "Ground Truth insurance network")
+```
+
+#2. Hill Climbing
+
+## b.Reconstruct the insurance network using the hill-climbing approach
+```{r}
+res_hc=hc(insurance)
+#plot(res_hc)
+class(res_hc)#HC function returns un object of class bn
+```
+
+## c.Get the adjacency matrix
+```{r}
+adj_mat_hc=amat(res_hc)
+```
+## d.Build a directed igraph network from the adjacency matrix
+
+```{r}
+
+net_hc=igraph::graph_from_adjacency_matrix(adj_mat_hc,mode="directed",weighted = T, diag = F)
+E(net_hc)$arrow.size <- .4
+
+par(mfrow = c(1,2))
+plot(network_insurance,layout=layout_with_dh,
+     edge.width=abs(E(network_insurance)$weight),
+     edge.color= "blue")
+legend(x=-1.2,y=-1.5,legend = "Ground Truth insurance network")
+
+plot(net_hc,layout=layout_with_gem,
+     edge.width=abs(E(net_hc)$weight),
+     edge.color= "red")
+legend(x=-1.2,y=-1.5,legend = "HC Reconstructed graph")
+
+```
+## e.Count the number of true positive (TP), false positive (FP) and false negative (FN)
+
+```{r}
+
+res_comp=bnlearn::compare(bnlearn::skeleton(g_truth),bnlearn::skeleton(res_hc))
+res_comp
+
+precision=res_comp$tp/(res_comp$tp+res_comp$fp)
+print(paste0('precision= ',precision))
+
+recall=res_comp$tp/(res_comp$tp+res_comp$fn)
+print(paste0('recall= ',recall))
+
+Fscore=(2*precision*recall)/(precision+recall)
+print(paste0('Fscore= ',Fscore))
+
+```
+
+##f  
+```{r}
+graphviz.compare(res_hc,g_truth, diff.args = list(fp.col = "red", fp.lwd = 4, show.first = FALSE))
+                 
+
+```
+# PC method
+## a.Reconstruct the insurance network using the PC approach
+
+```{r}
+dt=data.matrix(insurance)
+dt=dt-1
+
+level_names=c()
+for(i in colnames(dt)){
+  a=nlevels(as.factor(dt[,i]))
+  level_names=c(a,level_names)
+}
+suffStat<-list(dm=dt,nlev=level_names,adaptDF=FALSE)
+pc.D<-pc(suffStat,indepTest=disCItest,alpha=0.01,labels=colnames(dt),verbose = F)
+```
+
+## b.Get the adjacency matrix
+
+```{r}
+adj_matrix_pc=amat(as.bn(pc.D))
+```
+
+### Build a directed igraph network from the adjacency matrix 
+
+```{r}
+
+g3=graph_from_adjacency_matrix(adj_matrix_pc,mode="undirected")
+
+```
+
+### c.to plot a nice graph
+
+```{r}
+g_pc <- bnlearn::as.graphNEL(as.bn(pc.D))
+
+par(mfrow = c(1,2))
+plot(g_pc,  attrs=list(node = list(fillcolor = "yellow", fontsize=80)),main="Nice printed Dag")
+plot(g3,  attrs=list(node = list(fillcolor = "green", fontsize=40)),main="Original Dag")
+```
+
+## d.Count the number of true positive (TP), false positive (FP) and false negative (FN)
+
+```{r}
+res = bnlearn::compare(bnlearn::skeleton(as.bn(g_pc)),bnlearn::skeleton(g_truth) )
+
+prec = res$tp/(res$tp + res$fp)
+print(paste0('precision= ',prec))
+
+recal = res$tp/(res$tp + res$fn)
+print(paste0('recall= ',recal))
+
+fscore = (2*prec*recal)/(prec+recal)
+print(paste0('Fscore= ',fscore))
+
+```
+
+## e.Highlight the edges
+
+```{r}
+
+graphviz.compare(g_truth, as.bn(g_pc),diff.args = list(fp.col = "red", fp.lwd = 4, show.first = FALSE))
+
+```
+
+#Aracne method
+## a.Reconstruct the insurance network using the PC approach
+```{r}
+dt_aracne=as.data.frame(insurance)
+
+aracne_graph=bnlearn::aracne(dt_aracne)
+```
+
+## b.Get the adjacency matrix
+
+```{r}
+adj_matrix4 =amat(aracne_graph)
+```
+
+## c.Build a directed igraph network from the adjacency matrix
+
+```{r}
+g4=graph_from_adjacency_matrix(adj_matrix4,mode="undirected")
+
+g_aracne <- bnlearn::as.graphNEL(aracne_graph) # use this to avoid printing of graphviz.plot
+
+par(mfrow = c(1,2))
+plot(g4,  attrs=list(node = list(fillcolor = "orange", fontsize=30)),main="Dag")
+plot(g_aracne,  attrs=list(node = list(fillcolor = "lightgreen", fontsize=60)),main="Dag")
+```
+
+## d.Count the number of true positive (TP), false positive (FP) and false negative (FN)
+
+```{r}
+res_aracne = bnlearn::compare(bnlearn::skeleton(as.bn(g_aracne)),bnlearn::skeleton(g_truth) )
+
+prec_aracne = res_aracne$tp/(res_aracne$tp + res_aracne$fp)
+prec_aracne
+recal_aracne = res_aracne$tp/(res_aracne$tp + res_aracne$fn)
+recal_aracne
+fscore_aracne = (2*prec_aracne*recal_aracne)/(prec_aracne+recal_aracne)
+fscore_aracne
+```
+
+## e.Highlight the edges
+
+```{r}
+graphviz.compare(g_truth, as.bn(g_aracne),diff.args = list(fp.col = "red", fp.lwd = 4, show.first = FALSE))
+
+```
+
